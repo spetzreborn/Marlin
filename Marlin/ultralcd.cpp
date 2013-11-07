@@ -104,6 +104,7 @@ static void menu_action_setting_edit_callback_long5(const char* pstr, unsigned l
     if (encoderPosition > 0x8000) encoderPosition = 0; \
     if (encoderPosition / ENCODER_STEPS_PER_MENU_ITEM < currentMenuViewOffset) currentMenuViewOffset = encoderPosition / ENCODER_STEPS_PER_MENU_ITEM;\
     uint8_t _lineNr = currentMenuViewOffset, _menuItemNr; \
+    bool wasClicked = LCD_CLICKED;\
     for(uint8_t _drawLineNr = 0; _drawLineNr < LCD_HEIGHT; _drawLineNr++, _lineNr++) { \
         _menuItemNr = 0;
 #define MENU_ITEM(type, label, args...) do { \
@@ -142,7 +143,6 @@ uint8_t currentMenuViewOffset;              /* scroll offset in the current menu
 uint32_t blocking_enc;
 uint8_t lastEncoderBits;
 uint32_t encoderPosition;
-bool wasClicked;
 #if (SDCARDDETECT > 0)
 bool lcd_oldcardstatus;
 #endif
@@ -420,7 +420,9 @@ static void lcd_prepare_menu()
     START_MENU();
     MENU_ITEM(back, MSG_MAIN, lcd_main_menu);
 #ifdef SDSUPPORT
-    //MENU_ITEM(function, MSG_AUTOSTART, lcd_autostart_sd);
+    #ifdef MENU_ADDAUTOSTART
+      MENU_ITEM(function, MSG_AUTOSTART, lcd_autostart_sd);
+    #endif
 #endif
     MENU_ITEM(gcode, MSG_DISABLE_STEPPERS, PSTR("M84"));
     MENU_ITEM(gcode, MSG_AUTO_HOME, PSTR("G28"));
@@ -792,7 +794,11 @@ void lcd_sdcard_menu()
     {
         if (_menuItemNr == _lineNr)
         {
-            card.getfilename(i);
+            #ifndef SDCARD_RATHERRECENTFIRST
+              card.getfilename(i);
+            #else
+              card.getfilename(fileCnt-1-i);
+            #endif
             if (card.filenameIsDir)
             {
                 MENU_ITEM(sddirectory, MSG_CARD_MENU, card.filename, card.longFilename);
@@ -1036,7 +1042,6 @@ void lcd_update()
     
     if (lcd_next_update_millis < millis())
     {
-      wasClicked = LCD_CLICKED;
 #ifdef ULTIPANEL
 		#ifdef REPRAPWORLD_KEYPAD
         	if (REPRAPWORLD_KEYPAD_MOVE_Z_UP) {

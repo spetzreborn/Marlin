@@ -44,6 +44,11 @@
 #include "language.h"
 #include "pins_arduino.h"
 
+#ifdef BLINKM
+#include "BlinkM.h"
+#include "Wire.h" 
+#endif
+
 #if NUM_SERVOS > 0
 #include "Servo.h"
 #endif
@@ -90,7 +95,10 @@
 // M29  - Stop SD write
 // M30  - Delete file from SD (M30 filename.g)
 // M31  - Output time since last M109 or SD card start to serial
-// M32  - Select file and start SD print (Can be used when printing from SD card)
+// M32  - Select file and start SD print (Can be used _while_ printing from SD card files): 
+//        syntax "M32 /path/filename#", or "M32 S<startpos bytes> !filename#"
+//        Call gcode file : "M32 P !filename#" and return to caller file after finishing (simiarl to #include).
+//        The '#' is necessary when calling from within sd files, as it stops buffer prereading
 // M42  - Change pin status via gcode Use M42 Px Sy to set pin x to value y, when omitting Px the onboard led will be used.
 // M80  - Turn on Power Supply
 // M81  - Turn off Power Supply
@@ -115,6 +123,7 @@
 // M128 - EtoP Open (BariCUDA EtoP = electricity to air pressure transducer by jmil)
 // M129 - EtoP Closed (BariCUDA EtoP = electricity to air pressure transducer by jmil)
 // M140 - Set bed target temp
+// M150 - Set BlinkM Colour Output R: Red<0-255> U(!): Green<0-255> B: Blue<0-255> over i2c, G for green does not work.
 // M190 - Sxxx Wait for bed current temp to reach target temp. Waits only when heating
 //        Rxxx Wait for bed current temp to reach target temp. Waits when heating and cooling
 // M200 - Set filament diameter
@@ -357,7 +366,11 @@ void setup_powerhold()
   #endif
   #if defined(PS_ON_PIN) && PS_ON_PIN > -1
     SET_OUTPUT(PS_ON_PIN);
-    WRITE(PS_ON_PIN, PS_ON_AWAKE);
+	#if defined(PS_DEFAULT_OFF)
+	  WRITE(PS_ON_PIN, PS_ON_ASLEEP);
+    #else
+	  WRITE(PS_ON_PIN, PS_ON_AWAKE);
+	#endif
   #endif
 }
 
@@ -620,11 +633,20 @@ void get_command()
   if(!card.sdprinting || serial_count!=0){
     return;
   }
-  while( !card.eof()  && buflen < BUFSIZE) {
+  
+  //'#' stops reading from sd to the buffer prematurely, so procedural macro calls are possible
+  // if it occures, stop_buffering is triggered and the buffer is ran dry. 
+  // this character _can_ occure in serial com, due to checksums. however, no checksums are used in sd printing
+  
+  static bool stop_buffering=false;
+  if(buflen==0) stop_buffering=false;
+  
+  while( !card.eof()  && buflen < BUFSIZE && !stop_buffering) { 
     int16_t n=card.get();
-    serial_char = (char)n;
+    serial_char = (char)n; 
     if(serial_char == '\n' ||
        serial_char == '\r' ||
+       (serial_char == '#' && comment_mode == false) ||
        (serial_char == ':' && comment_mode == false) ||
        serial_count >= (MAX_CMD_SIZE - 1)||n==-1)
     {
@@ -644,6 +666,9 @@ void get_command()
         card.checkautostart(true);
 
       }
+      if(serial_char=='#')
+        stop_buffering=true;
+      
       if(!serial_count)
       {
         comment_mode = false; //for new command
@@ -920,19 +945,28 @@ static void homeaxis(int axis) {
       axis_home_dir = x_home_dir(active_extruder);
 #endif
 
+    current_position[axis] = 0;
+    plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
+	
     // Engage Servo endstop if enabled
     #ifdef SERVO_ENDSTOPS
-#if defined (ENABLE_AUTO_BED_LEVELING) && (PROBE_SERVO_DEACTIVATION_DELAY > 0)
-    if (axis==Z_AXIS) engage_z_probe();
-	else
-#endif
+      #if defined (ENABLE_AUTO_BED_LEVELING) && (PROBE_SERVO_DEACTIVATION_DELAY > 0)
+        if (axis==Z_AXIS) {
+          #if defined (Z_RAISE_BEFORE_HOMING) && (Z_RAISE_BEFORE_HOMING > 0)
+            destination[axis] = Z_RAISE_BEFORE_HOMING * axis_home_dir * (-1);    // Set destination away from bed
+            feedrate = max_feedrate[axis];
+            plan_buffer_line(destination[X_AXIS], destination[Y_AXIS], destination[Z_AXIS], destination[E_AXIS], feedrate, active_extruder);
+            st_synchronize();
+          #endif
+          engage_z_probe();
+        }
+	    else
+      #endif
       if (servo_endstops[axis] > -1) {
         servos[servo_endstops[axis]].write(servo_endstop_angles[axis * 2]);
       }
     #endif
 
-    current_position[axis] = 0;
-    plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
     destination[axis] = 1.5 * max_length(axis) * axis_home_dir;
     feedrate = homing_feedrate[axis];
     plan_buffer_line(destination[X_AXIS], destination[Y_AXIS], destination[Z_AXIS], destination[E_AXIS], feedrate/60, active_extruder);
@@ -1042,15 +1076,14 @@ void process_commands()
       }
 
       break;
-      case 11: // G10 retract_recover
-      if(!retracted)
+      case 11: // G11 retract_recover
+      if(retracted)
       {
         destination[X_AXIS]=current_position[X_AXIS];
         destination[Y_AXIS]=current_position[Y_AXIS];
         destination[Z_AXIS]=current_position[Z_AXIS];
-
         current_position[Z_AXIS]+=retract_zlift;
-        current_position[E_AXIS]+=-retract_recover_length;
+        destination[E_AXIS]=current_position[E_AXIS]+retract_length+retract_recover_length; 
         feedrate=retract_recover_feedrate;
         retracted=false;
         prepare_move();
@@ -1198,6 +1231,9 @@ void process_commands()
           current_position[Z_AXIS]=code_value()+add_homeing[2];
         }
       }
+      #ifdef ENABLE_AUTO_BED_LEVELING
+         current_position[Z_AXIS] -= Z_PROBE_OFFSET_FROM_EXTRUDER;  //Add Z_Probe offset (the distance is negative)
+      #endif
       plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
 #endif // else DELTA
 
@@ -1455,19 +1491,41 @@ void process_commands()
         card.removeFile(strchr_pointer + 4);
       }
       break;
-    case 32: //M32 - Select file and start SD print
+    case 32: //M32 - Select file and start SD print 
+    {
       if(card.sdprinting) {
         st_synchronize();
-        card.closefile();
-        card.sdprinting = false;
+
       }
-      starpos = (strchr(strchr_pointer + 4,'*'));
+      starpos = (strchr(strchr_pointer + 4,'*')); 
+      
+      char* namestartpos = (strchr(strchr_pointer + 4,'!'));   //find ! to indicate filename string start.
+      if(namestartpos==NULL)
+      {
+        namestartpos=strchr_pointer + 4; //default name position, 4 letters after the M
+      }
+      else
+        namestartpos++; //to skip the '!'
+        
       if(starpos!=NULL)
         *(starpos-1)='\0';
-      card.openFile(strchr_pointer + 4,true);
-      card.startFileprint();
-      starttime=millis();
-      break;
+            
+      bool call_procedure=(code_seen('P'));
+      
+      if(strchr_pointer>namestartpos) 
+        call_procedure=false;  //false alert, 'P' found within filename
+      
+      if( card.cardOK ) 
+      {
+        card.openFile(namestartpos,true,!call_procedure);
+        if(code_seen('S'))
+          if(strchr_pointer<namestartpos) //only if "S" is occuring _before_ the filename
+            card.setIndex(code_value_long());
+        card.startFileprint();
+        if(!call_procedure)
+          starttime=millis(); //procedure calls count as normal print time.
+      }
+    } break;
     case 928: //M928 - Start SD write
       starpos = (strchr(strchr_pointer + 5,'*'));
       if(starpos != NULL){
@@ -1570,6 +1628,23 @@ void process_commands()
         SERIAL_PROTOCOLPGM(" B@:");
         SERIAL_PROTOCOL(getHeaterPower(-1));
 
+        #ifdef SHOW_TEMP_ADC_VALUES
+          #if defined(TEMP_BED_PIN) && TEMP_BED_PIN > -1
+            SERIAL_PROTOCOLPGM("    ADC B:");
+            SERIAL_PROTOCOL_F(degBed(),1);
+            SERIAL_PROTOCOLPGM("C->");
+            SERIAL_PROTOCOL_F(rawBedTemp()/OVERSAMPLENR,0);
+          #endif
+          for (int8_t cur_extruder = 0; cur_extruder < EXTRUDERS; ++cur_extruder) {
+            SERIAL_PROTOCOLPGM("  T");
+            SERIAL_PROTOCOL(cur_extruder);
+            SERIAL_PROTOCOLPGM(":");
+            SERIAL_PROTOCOL_F(degHotend(cur_extruder),1);
+            SERIAL_PROTOCOLPGM("C->");
+            SERIAL_PROTOCOL_F(rawHotendTemp(cur_extruder)/OVERSAMPLENR,0);
+          }
+        #endif
+		
         SERIAL_PROTOCOLLN("");
       return;
       break;
@@ -1906,6 +1981,21 @@ void process_commands()
       #endif
       break;
       //TODO: update for all axis, use for loop
+    #ifdef BLINKM  
+    case 150: // M150
+      {
+        byte red;
+        byte grn;
+        byte blu;
+        
+        if(code_seen('R')) red = code_value();
+        if(code_seen('U')) grn = code_value();
+        if(code_seen('B')) blu = code_value();
+        
+        SendColors(red,grn,blu);        
+      }
+      break;
+    #endif //BLINKM
     case 201: // M201
       for(int8_t i=0; i < NUM_AXIS; i++)
       {
@@ -2888,6 +2978,39 @@ void controllerFan()
 }
 #endif
 
+#ifdef TEMP_STAT_LEDS
+static bool blue_led = false;
+static bool red_led = false;
+static uint32_t stat_update = 0;
+
+void handle_status_leds(void) {
+  float max_temp = 0.0;
+  if(millis() > stat_update) {
+    stat_update += 500; // Update every 0.5s
+    for (int8_t cur_extruder = 0; cur_extruder < EXTRUDERS; ++cur_extruder) {
+       max_temp = max(max_temp, degHotend(cur_extruder));
+       max_temp = max(max_temp, degTargetHotend(cur_extruder));
+    }
+    #if defined(TEMP_BED_PIN) && TEMP_BED_PIN > -1
+      max_temp = max(max_temp, degTargetBed());
+      max_temp = max(max_temp, degBed());
+    #endif
+    if((max_temp > 55.0) && (red_led == false)) {
+      digitalWrite(STAT_LED_RED, 1);
+      digitalWrite(STAT_LED_BLUE, 0);
+      red_led = true;
+      blue_led = false;
+    }
+    if((max_temp < 54.0) && (blue_led == false)) {
+      digitalWrite(STAT_LED_RED, 0);
+      digitalWrite(STAT_LED_BLUE, 1);
+      red_led = false;
+      blue_led = true;
+    }
+  }
+}
+#endif
+
 void manage_inactivity()
 {
   if( (millis() - previous_millis_cmd) >  max_inactive_time )
@@ -2941,7 +3064,10 @@ void manage_inactivity()
       memcpy(destination,current_position,sizeof(destination));
       prepare_move(); 
     }
-  #endif  
+  #endif
+  #ifdef TEMP_STAT_LEDS
+      handle_status_leds();
+  #endif
   check_axes_activity();
 }
 
