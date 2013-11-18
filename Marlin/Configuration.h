@@ -24,8 +24,12 @@
 #define SERIAL_PORT 0
 
 // This determines the communication speed of the printer
+// This determines the communication speed of the printer
 #define BAUDRATE 250000
-//#define BAUDRATE 115200
+
+// This enables the serial port associated to the Bluetooth interface
+//#define BTENABLED              // Enable BT interface on AT90USB devices
+
 
 //// The following define selects which electronics board you have. Please choose the one that matches your setup
 // 10 = Gen7 custom (Alfons3 Version) "https://github.com/Alfons3/Generation_7_Electronics"
@@ -54,6 +58,7 @@
 // 80 = Rumba
 // 81 = Printrboard (AT90USB1286)
 // 82 = Brainwave (AT90USB646)
+// 83 = SAV Mk-I (AT90USB1286)
 // 9  = Gen3+
 // 70 = Megatronics
 // 701= Megatronics v2.0
@@ -69,6 +74,10 @@
 
 // Define this to set a custom name for your generic Mendel,
 // #define CUSTOM_MENDEL_NAME "This Mendel"
+
+// Define this to set a unique identifier for this printer, (Used by some programs to differentiate between machines)
+// You can use an online service to generate a random UUID. (eg http://www.uuidgenerator.net/version4)
+// #define MACHINE_UUID "00000000-0000-0000-0000-000000000000"
 
 // This defines the number of extruders
 #define EXTRUDERS 1
@@ -96,7 +105,7 @@
 // 2 is 200k thermistor - ATC Semitec 204GT-2 (4.7k pullup)
 // 3 is mendel-parts thermistor (4.7k pullup)
 // 4 is 10k thermistor !! do not use it for a hotend. It gives bad resolution at high temp. !!
-// 5 is 100K thermistor - ATC Semitec 104GT-2 (Used in ParCan) (4.7k pullup)
+// 5 is 100K thermistor - ATC Semitec 104GT-2 (Used in ParCan & J-Head) (4.7k pullup)
 // 6 is 100k EPCOS - Not as accurate as table 1 (created using a fluke thermocouple) (4.7k pullup)
 // 7 is 100k Honeywell thermistor 135-104LAG-J01 (4.7k pullup)
 // 71 is 100k Honeywell thermistor 135-104LAF-J01 (4.7k pullup)
@@ -109,7 +118,7 @@
 //                          (but gives greater accuracy and more stable PID)
 // 51 is 100k thermistor - EPCOS (1k pullup)
 // 52 is 200k thermistor - ATC Semitec 204GT-2 (1k pullup)
-// 55 is 100k thermistor - ATC Semitec 104GT-2 (Used in ParCan) (1k pullup)
+// 55 is 100k thermistor - ATC Semitec 104GT-2 (Used in ParCan & J-Head) (1k pullup)
 
 #define TEMP_SENSOR_0 1
 #define TEMP_SENSOR_1 0
@@ -510,6 +519,17 @@ const bool Z_MAX_ENDSTOP_INVERTING = true; // set to true to invert the logic of
   #define NEWPANEL
   #define ULTIPANEL
 #endif
+
+// Shift register panels
+// ---------------------
+// 2 wire Non-latching LCD SR from:
+// https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/schematics#!shiftregister-connection 
+//#define SR_LCD
+#ifdef SR_LCD
+   #define SR_LCD_2W_NL    // Non latching 2 wire shiftregister
+   //#define NEWPANEL
+#endif
+
 
 #ifdef ULTIPANEL
 //  #define NEWPANEL  //enable this if you have a click-encoder panel
