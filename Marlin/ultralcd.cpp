@@ -194,6 +194,7 @@ static void lcd_status_screen()
         currentMenu = lcd_main_menu;
         encoderPosition = 0;
         lcd_quick_feedback();
+        lcd_implementation_init(); // to maybe revive the LCD if static electricity killed it.
     }
 
 #ifdef ULTIPANEL_FEEDMULTIPLY
@@ -255,6 +256,8 @@ static void lcd_sdcard_stop()
         enquecommand_P(PSTR(SD_FINISHED_RELEASECOMMAND));
     }
     autotempShutdown();
+
+	cancel_heatup = true;
 }
 
 /* Menu implementation */
@@ -303,37 +306,6 @@ static void lcd_autostart_sd()
     card.checkautostart(true);
 }
 #endif
-
-void lcd_preheat_pla()
-{
-    setTargetHotend0(plaPreheatHotendTemp);
-    setTargetHotend1(plaPreheatHotendTemp);
-    setTargetHotend2(plaPreheatHotendTemp);
-    setTargetBed(plaPreheatHPBTemp);
-    fanSpeed = plaPreheatFanSpeed;
-    lcd_return_to_status();
-    setWatch(); // heater sanity check timer
-}
-
-void lcd_preheat_abs()
-{
-    setTargetHotend0(absPreheatHotendTemp);
-    setTargetHotend1(absPreheatHotendTemp);
-    setTargetHotend2(absPreheatHotendTemp);
-    setTargetBed(absPreheatHPBTemp);
-    fanSpeed = absPreheatFanSpeed;
-    lcd_return_to_status();
-    setWatch(); // heater sanity check timer
-}
-
-static void lcd_cooldown()
-{
-    setTargetHotend0(0);
-    setTargetHotend1(0);
-    setTargetHotend2(0);
-    setTargetBed(0);
-    lcd_return_to_status();
-}
 
 #ifdef BABYSTEPPING
 static void lcd_babystep_x()
@@ -435,6 +407,154 @@ static void lcd_tune_menu()
     END_MENU();
 }
 
+void lcd_preheat_pla0()
+{
+    setTargetHotend0(plaPreheatHotendTemp);
+    setTargetBed(plaPreheatHPBTemp);
+    fanSpeed = plaPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+void lcd_preheat_abs0()
+{
+    setTargetHotend0(absPreheatHotendTemp);
+    setTargetBed(absPreheatHPBTemp);
+    fanSpeed = absPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+#if TEMP_SENSOR_1 != 0 //2nd extruder preheat
+void lcd_preheat_pla1()
+{
+    setTargetHotend1(plaPreheatHotendTemp);
+    setTargetBed(plaPreheatHPBTemp);
+    fanSpeed = plaPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+void lcd_preheat_abs1()
+{
+    setTargetHotend1(absPreheatHotendTemp);
+    setTargetBed(absPreheatHPBTemp);
+    fanSpeed = absPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+#endif //2nd extruder preheat
+
+#if TEMP_SENSOR_2 != 0 //3 extruder preheat
+void lcd_preheat_pla2()
+{
+    setTargetHotend2(plaPreheatHotendTemp);
+    setTargetBed(plaPreheatHPBTemp);
+    fanSpeed = plaPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+void lcd_preheat_abs2()
+{
+    setTargetHotend2(absPreheatHotendTemp);
+    setTargetBed(absPreheatHPBTemp);
+    fanSpeed = absPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+#endif //3 extruder preheat
+
+#if TEMP_SENSOR_1 != 0 || TEMP_SENSOR_2 != 0 //more than one extruder present
+void lcd_preheat_pla012()
+{
+    setTargetHotend0(plaPreheatHotendTemp);
+    setTargetHotend1(plaPreheatHotendTemp);
+    setTargetHotend2(plaPreheatHotendTemp);
+    setTargetBed(plaPreheatHPBTemp);
+    fanSpeed = plaPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+void lcd_preheat_abs012()
+{
+    setTargetHotend0(absPreheatHotendTemp);
+    setTargetHotend1(absPreheatHotendTemp);
+    setTargetHotend2(absPreheatHotendTemp);
+    setTargetBed(absPreheatHPBTemp);
+    fanSpeed = absPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+#endif //more than one extruder present
+
+void lcd_preheat_pla_bedonly()
+{
+    setTargetBed(plaPreheatHPBTemp);
+    fanSpeed = plaPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+void lcd_preheat_abs_bedonly()
+{
+    setTargetBed(absPreheatHPBTemp);
+    fanSpeed = absPreheatFanSpeed;
+    lcd_return_to_status();
+    setWatch(); // heater sanity check timer
+}
+
+static void lcd_preheat_pla_menu()
+{
+    START_MENU();
+    MENU_ITEM(back, MSG_PREPARE, lcd_prepare_menu);
+    MENU_ITEM(function, MSG_PREHEAT_PLA0, lcd_preheat_pla0);
+#if TEMP_SENSOR_1 != 0 //2 extruder preheat
+    MENU_ITEM(function, MSG_PREHEAT_PLA1, lcd_preheat_pla1);
+#endif //2 extruder preheat
+#if TEMP_SENSOR_2 != 0 //3 extruder preheat
+    MENU_ITEM(function, MSG_PREHEAT_PLA2, lcd_preheat_pla2);
+#endif //3 extruder preheat
+#if TEMP_SENSOR_1 != 0 || TEMP_SENSOR_2 != 0 //all extruder preheat
+    MENU_ITEM(function, MSG_PREHEAT_PLA012, lcd_preheat_pla012);
+#endif //2 extruder preheat
+#if TEMP_SENSOR_BED != 0
+    MENU_ITEM(function, MSG_PREHEAT_PLA_BEDONLY, lcd_preheat_pla_bedonly);
+#endif
+    END_MENU();
+}
+
+static void lcd_preheat_abs_menu()
+{
+    START_MENU();
+    MENU_ITEM(back, MSG_PREPARE, lcd_prepare_menu);
+    MENU_ITEM(function, MSG_PREHEAT_ABS0, lcd_preheat_abs0);
+#if TEMP_SENSOR_1 != 0 //2 extruder preheat
+    MENU_ITEM(function, MSG_PREHEAT_ABS1, lcd_preheat_abs1);
+#endif //2 extruder preheat
+#if TEMP_SENSOR_2 != 0 //3 extruder preheat
+    MENU_ITEM(function, MSG_PREHEAT_ABS2, lcd_preheat_abs2);
+#endif //3 extruder preheat
+#if TEMP_SENSOR_1 != 0 || TEMP_SENSOR_2 != 0 //all extruder preheat
+    MENU_ITEM(function, MSG_PREHEAT_ABS012, lcd_preheat_abs012);
+#endif //2 extruder preheat
+#if TEMP_SENSOR_BED != 0
+    MENU_ITEM(function, MSG_PREHEAT_ABS_BEDONLY, lcd_preheat_abs_bedonly);
+#endif
+    END_MENU();
+}
+
+void lcd_cooldown()
+{
+    setTargetHotend0(0);
+    setTargetHotend1(0);
+    setTargetHotend2(0);
+    setTargetBed(0);
+    fanSpeed = 0;
+    lcd_return_to_status();
+}
+
 static void lcd_prepare_menu()
 {
     START_MENU();
@@ -447,8 +567,15 @@ static void lcd_prepare_menu()
     MENU_ITEM(gcode, MSG_DISABLE_STEPPERS, PSTR("M84"));
     MENU_ITEM(gcode, MSG_AUTO_HOME, PSTR("G28"));
     //MENU_ITEM(gcode, MSG_SET_ORIGIN, PSTR("G92 X0 Y0 Z0"));
-    MENU_ITEM(function, MSG_PREHEAT_PLA, lcd_preheat_pla);
-    MENU_ITEM(function, MSG_PREHEAT_ABS, lcd_preheat_abs);
+#if TEMP_SENSOR_0 != 0
+  #if TEMP_SENSOR_1 != 0 || TEMP_SENSOR_2 != 0 || TEMP_SENSOR_BED != 0
+    MENU_ITEM(submenu, MSG_PREHEAT_PLA, lcd_preheat_pla_menu);
+    MENU_ITEM(submenu, MSG_PREHEAT_ABS, lcd_preheat_abs_menu);
+  #else
+    MENU_ITEM(function, MSG_PREHEAT_PLA, lcd_preheat_pla0);
+    MENU_ITEM(function, MSG_PREHEAT_ABS, lcd_preheat_abs0);
+  #endif
+#endif
     MENU_ITEM(function, MSG_COOLDOWN, lcd_cooldown);
 #if PS_ON_PIN > -1
     if (powersupply)
@@ -743,6 +870,10 @@ static void lcd_control_motion_menu()
 #ifdef ABORT_ON_ENDSTOP_HIT_FEATURE_ENABLED
     MENU_ITEM_EDIT(bool, MSG_ENDSTOP_ABORT, &abort_on_endstop_hit);
 #endif
+#ifdef SCARA
+    MENU_ITEM_EDIT(float74, MSG_XSCALE, &axis_scaling[X_AXIS],0.5,2);
+    MENU_ITEM_EDIT(float74, MSG_YSCALE, &axis_scaling[Y_AXIS],0.5,2);
+#endif
     END_MENU();
 }
 
@@ -778,9 +909,15 @@ static void lcd_control_retract_menu()
     MENU_ITEM(back, MSG_CONTROL, lcd_control_menu);
     MENU_ITEM_EDIT(bool, MSG_AUTORETRACT, &autoretract_enabled);
     MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT, &retract_length, 0, 100);
+	#if EXTRUDERS > 1
+      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_SWAP, &retract_length_swap, 0, 100);
+    #endif
     MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACTF, &retract_feedrate, 1, 999);
     MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_ZLIFT, &retract_zlift, 0, 999);
     MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_RECOVER, &retract_recover_length, 0, 100);
+	#if EXTRUDERS > 1
+      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_RECOVER_SWAP, &retract_recover_length_swap, 0, 100);
+    #endif
     MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACT_RECOVERF, &retract_recover_feedrate, 1, 999);
     END_MENU();
 }
@@ -1364,9 +1501,13 @@ char *itostr31(const int &xx)
   return conv;
 }
 
-char *itostr3(const int &xx)
+char *itostr3(const int &x)
 {
-  if (xx >= 100)
+  int xx = x;
+  if (xx < 0) {
+     conv[0]='-';
+     xx = -xx;
+  } else if (xx >= 100)
     conv[0]=(xx/100)%10+'0';
   else
     conv[0]=' ';
